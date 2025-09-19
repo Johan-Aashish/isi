@@ -1,0 +1,97 @@
+# Question 3:
+from google.colab import files
+import pandas as pd
+
+uploaded = files.upload()
+df = pd.read_csv("marketing_campaign.csv", sep="\t")
+
+print("Shape of dataset:", df.shape)
+print("\nFirst 5 rows:\n", df.head())
+print("\nData types:\n", df.dtypes)
+print("\nMissing values:\n", df.isnull().sum())
+print("\nBasic statistics:\n", df.describe())
+
+
+# Question 4:
+
+import numpy as np
+import matplotlib.pyplot as plt
+import cv2
+from google.colab.patches import cv2_imshow
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+
+class MarketingDataClustering:
+    def __init__(self, filepath, n_clusters=4, n_components=2):
+        self.filepath = filepath
+        self.n_clusters = n_clusters
+        self.n_components = n_components
+        self.data = None
+        self.scaled_data = None
+        self.reduced_data = None
+        self.kmeans = None
+        self.labels = None
+
+    def load_data(self):
+        df = pd.read_csv(self.filepath, sep="\t")
+        df['Income'].fillna(df['Income'].median(), inplace=True)
+        df['Age'] = 2025 - df['Year_Birth']
+        df['Dt_Customer'] = pd.to_datetime(df['Dt_Customer'], dayfirst=True)
+        end_date = pd.to_datetime("2025-01-01")
+        df['Customer_Lifetime'] = (end_date - df['Dt_Customer']).dt.days
+        df['Dependents'] = df['Kidhome'] + df['Teenhome']
+        drop_cols = ['ID','Year_Birth','Dt_Customer','Z_CostContact','Z_Revenue','Kidhome','Teenhome']
+        df = df.drop(columns=drop_cols)
+        df = pd.get_dummies(df, columns=['Education','Marital_Status'], drop_first=True, dtype=int)
+        self.data = df
+        return self.data
+
+    def preprocess_data(self):
+        scaler = StandardScaler()
+        self.scaled_data = scaler.fit_transform(self.data)
+        return self.scaled_data
+
+    def apply_kmeans(self):
+        pca = PCA(n_components=self.n_components, random_state=42)
+        self.reduced_data = pca.fit_transform(self.scaled_data)
+        self.kmeans = KMeans(n_clusters=self.n_clusters, random_state=42, n_init=10)
+        self.labels = self.kmeans.fit_predict(self.reduced_data)
+        return self.labels
+
+    def evaluate_clusters(self):
+        score = silhouette_score(self.reduced_data, self.labels)
+        print(f"Silhouette Score: {score:.3f}")
+        return score
+
+    def visualize_matplotlib(self):
+        plt.figure(figsize=(8,6))
+        scatter = plt.scatter(self.reduced_data[:,0], self.reduced_data[:,1], c=self.labels, cmap='viridis', alpha=0.7)
+        plt.xlabel("PC1")
+        plt.ylabel("PC2")
+        plt.title("Clusters after PCA & KMeans")
+        plt.legend(handles=scatter.legend_elements()[0], labels=range(self.n_clusters), title="Clusters")
+        plt.show()
+
+    def visualize_opencv(self):
+        canvas = np.ones((600,800,3),dtype=np.uint8)*255
+        colors = [(255,0,0),(0,255,0),(0,0,255),(255,165,0)]
+        x_min, x_max = self.reduced_data[:,0].min(), self.reduced_data[:,0].max()
+        y_min, y_max = self.reduced_data[:,1].min(), self.reduced_data[:,1].max()
+        scaled = self.reduced_data.copy()
+        scaled[:,0] = 700*(scaled[:,0]-x_min)/(x_max-x_min)+50
+        scaled[:,1] = 500*(scaled[:,1]-y_min)/(y_max-y_min)+50
+        scaled = scaled.astype(int)
+        for i,point in enumerate(scaled):
+            color = colors[self.labels[i] % len(colors)]
+            cv2.circle(canvas, tuple(point), 4, color, -1)
+        cv2_imshow(canvas)
+
+clustering = MarketingDataClustering(filepath="marketing_campaign.csv", n_clusters=4)
+clustering.load_data()
+clustering.preprocess_data()
+clustering.apply_kmeans()
+clustering.evaluate_clusters()
+clustering.visualize_matplotlib()
+clustering.visualize_opencv()
